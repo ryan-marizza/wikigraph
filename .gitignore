@@ -1,0 +1,16 @@
+# --- Airflow (docker-compose) ---
+airflow-docker/logs/
+airflow-docker/.env
+airflow-docker/config/airflow.cfg
+airflow-docker/airflow.sh
+airflow-docker/**/__pycache__/
+airflow-docker/**/*.pyc
+
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+
+# --- Data ---
+*.xml
+*.bz2
