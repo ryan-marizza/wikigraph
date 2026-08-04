@@ -26,7 +26,7 @@ Do not skip **Verify**. The whole point of this ordering is that each step is pr
 | 0 | Orientation: the two rules | 10 min |
 | 1 | Repo scaffolding + Windows git hygiene | 30 min |
 | 2 | Python package and local venv | 30 min |
-| 3 | Docker Desktop prep: disk, RAM, network | 20 min |
+| 3 | WSL2 resource prep: disk, RAM, network | 20 min |
 | 4 | The warehouse Postgres container | 45 min |
 | 5 | Roles, schemas, and a migration runner | 1 hr |
 | 6 | Measure your disk before optimizing it | 20 min |
@@ -378,63 +378,131 @@ git commit -m "Python package skeleton with config module"
 
 ---
 
-## Step 3 — Docker Desktop prep: disk, RAM, network
+## Step 3 — WSL2 resource prep: disk, RAM, network
 
 ### Why
 
-Three settings that are annoying to change later and painful to discover the hard way.
+You're on the **WSL2 backend**, so Docker Desktop's Settings → Resources screen shows a note saying resource limits are managed by Windows, and the memory/CPU/disk sliders are absent. Those knobs live in `%UserProfile%\.wslconfig` instead — a global config for the WSL 2 virtual machine that every distro (including Docker's) runs inside.
 
-**Disk.** Docker Desktop stores all named volumes inside a single virtual disk image with a fixed maximum size. The default is often 64 GB. Your warehouse will want ~35 GB for one shard and ~120 GB after backfill. When that virtual disk fills, Postgres does not fail gracefully — it can leave the data directory in a state you have to `down -v` to recover from. Raise it now.
+The good news is that the WSL2 defaults are far more generous than the old Hyper-V backend's, so **you will probably change nothing here**. This step is mostly about measuring and recording. But two WSL-specific behaviors will bite you later if you don't know about them now:
 
-**RAM.** You'll tune Postgres's `shared_buffers` to a fraction of what Docker has. You need to know the number.
+**Disk is not capped the way you'd expect.** The `defaultVhdSize` setting — the maximum size a distro's virtual disk may grow to — defaults to **1 TB**. There is no 64 GB ceiling to raise. Your 150 GB warehouse fits comfortably under the VHD limit, so the binding constraint is not WSL's setting at all: **it's real free space on the Windows drive that physically holds the VHDX file.** That's the number to check.
 
-**Network.** Your Airflow stack and your warehouse are two separate Docker Compose projects. By default, each Compose project creates its own isolated network, and containers in one cannot resolve hostnames in the other. An **external network** that both attach to is the clean fix — cleaner than merging everything into one giant compose file, because it keeps their lifecycles independent (Rule from Step 0).
+**The VHDX grows but does not shrink.** This one matters a lot for this project. When Postgres writes 40 GB and you then run `.\tasks.ps1 db-nuke`, the space is freed *inside* the virtual disk — but the VHDX file on your Windows drive stays 40 GB. Do that four or five times while iterating and you've silently consumed 200 GB of `C:` with nothing to show for it. The fix is to make the VHD **sparse**, which lets it release freed blocks back to Windows.
+
+**RAM.** WSL 2 defaults to 50% of total system memory, and all logical processors. You need the actual number because Step 4 tunes Postgres's `shared_buffers` to roughly 25% of it.
+
+**Network.** Your Airflow stack and your warehouse are two separate Docker Compose projects. By default each Compose project creates its own isolated network, and containers in one cannot resolve hostnames in the other. An **external network** both attach to is the clean fix — better than merging everything into one giant compose file, because it keeps their lifecycles independent (Step 0).
 
 ### Do
 
-**3a. Raise the disk limit.**
+**3a. Check your WSL version.** Some of what follows needs WSL 2.0+ (the Microsoft Store version, not the older inbox one):
 
-Docker Desktop → **Settings** (gear icon) → **Resources** → **Advanced**.
+```powershell
+wsl --version
+wsl --list --verbose
+```
 
-- **Disk image size**: set to at least **150 GB**. This is a maximum, not an allocation — the file grows on demand, so setting it high costs you nothing until you use it.
-- If your `C:` drive is short on space, use **Disk image location** on the same screen to move it to another drive. Do this *now*; moving it later requires recreating all volumes.
-- **Memory**: note the current value. If it's below 8 GB and your machine has 16 GB+, raise it to 8–12 GB.
-- **CPUs**: note this too. It sets your parallelism ceiling in Step 11.
+If `wsl --version` isn't recognized, you're on the legacy inbox build — run `wsl --update` first.
 
-Click **Apply & restart**. This takes a minute or two.
+You should see Docker's distro(s) in the list: `docker-desktop` alone on recent Docker Desktop, or `docker-desktop` plus `docker-desktop-data` on older versions.
 
-**3b. Write down your numbers.**
+**3b. Find out how much real disk you have, and where the VHDX lives.**
 
-Create `NOTES.md` at the repo root. This file is where measured facts live, and it's the single highest-value habit in this runbook — capacity planning is mostly just "I wrote down what happened last time."
+```powershell
+# Free space on every fixed drive
+Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{n='UsedGB';e={[math]::Round($_.Used/1GB,1)}}, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
+
+# Locate Docker's virtual disks and their CURRENT size on disk
+Get-ChildItem "$env:LOCALAPPDATA\Docker\wsl" -Recurse -Filter *.vhdx -ErrorAction SilentlyContinue |
+    Select-Object FullName, @{n='SizeGB';e={[math]::Round($_.Length/1GB,2)}}
+```
+
+The drive hosting that VHDX needs **~40 GB free for single-shard development and ~150 GB before you backfill all 19 shards**, on top of the 228 GB your raw XML already occupies. Note both numbers.
+
+> If the VHDX is on a drive that's too small, the clean fix is Docker Desktop → **Settings → Resources → Advanced → Disk image location**, which still works on the WSL2 backend even though the size slider doesn't appear. Move it *now* — relocating later means recreating your volumes.
+
+**3c. Make the VHD sparse** so `db-nuke` actually returns space to Windows. This is the single most useful thing in this step.
+
+```powershell
+wsl --shutdown
+wsl --manage docker-desktop --set-sparse true
+```
+
+If your Docker Desktop version still uses a separate data distro, do that one too:
+
+```powershell
+wsl --manage docker-desktop-data --set-sparse true
+```
+
+> Run `wsl --manage --help` if either command errors — the flag names moved around across WSL releases. If `--set-sparse` isn't available, add `sparseVhd=true` under `[experimental]` in 3d below; note that only makes **newly created** VHDs sparse, so you'd need to reset Docker's disk (Settings → Resources → **Reset disk image**) for it to take effect. Losing your Docker volumes is cheap right now and expensive later — if you're going to do it, do it today.
+
+**3d. Only if you need to change memory or CPU:** create or edit `%UserProfile%\.wslconfig`.
+
+```powershell
+notepad $env:USERPROFILE\.wslconfig
+```
+
+```ini
+# Applies to ALL WSL 2 distros, including the ones Docker Desktop runs.
+[wsl2]
+
+# Default is 50% of total system RAM. Set explicitly only if you want to cap it
+# (to leave room for Windows) or raise it. Step 4 tunes shared_buffers to ~25%
+# of whatever this ends up being.
+memory=8GB
+
+# Default is every logical processor. This is your parallelism ceiling for the
+# shard_parse pool in Step 11.
+processors=6
+
+# Default is 25% of the memory value, rounded up to the nearest GB.
+swap=8GB
+
+[experimental]
+# Newly created VHDs release freed blocks back to Windows instead of only ever
+# growing. See 3c — this does not retroactively convert an existing VHD.
+sparseVhd=true
+```
+
+Sizes default to bytes; append `GB` or `MB` as shown. Any Windows paths in this file need **escaped backslashes** (`C:\\temp\\...`).
+
+> **The 8-second rule.** WSL applies `.wslconfig` only when the VM fully stops, which takes about 8 seconds after the last distro shell closes. Editing the file and reopening a terminal does *not* pick up changes. Always:
+> ```powershell
+> wsl --shutdown
+> ```
+> then restart Docker Desktop. If the file is malformed, WSL silently ignores it and boots with defaults — so always verify (below) rather than assuming.
+
+> Microsoft now ships a **WSL Settings** GUI app (search the Start menu) that edits this file for you, and the docs recommend it over hand-editing. Either is fine; the file is what actually matters.
+
+**3e. Write down your numbers.** Create `NOTES.md` at the repo root. This is where measured facts live, and it's the single highest-value habit in this runbook — capacity planning is mostly just "I wrote down what happened last time."
 
 ```markdown
 # WikiGraph — Measured Facts
 
 ## Environment
 - Date:
-- Host: Windows, Docker Desktop <version>
-- Docker RAM: ___ GB
-- Docker CPUs: ___
-- Docker disk image max: ___ GB, located on drive ___
-- Host free space on raw_data drive: ___ GB
+- Host: Windows, Docker Desktop <version>, WSL <version>
+- Backend: WSL2
+- WSL VM memory: ___ GB   (default = 50% of system RAM)
+- WSL VM processors: ___  (default = all logical CPUs)
+- Docker VHDX path: ___
+- Docker VHDX current size: ___ GB
+- Sparse VHD enabled: yes / no
+- Free space on VHDX drive: ___ GB
+- Free space on raw_data drive: ___ GB
 
 ## Measurements
 (filled in as we go)
 ```
 
-Fill in the blanks. Get Docker's version with:
+Get the Docker version with:
 
 ```powershell
 docker version --format '{{.Server.Version}}'
 ```
 
-And host free space:
-
-```powershell
-Get-PSDrive C | Select-Object Used,Free
-```
-
-**3c. Create the shared network.**
+**3f. Create the shared network.**
 
 ```powershell
 docker network create wikigraph-net
@@ -443,16 +511,31 @@ docker network create wikigraph-net
 ### Verify
 
 ```powershell
+# 1. What the Docker daemon actually sees. This is the number Step 4 tunes against.
+docker info --format 'CPUs: {{.NCPU}}  Memory: {{.MemTotal}}'
+
+# 2. The shared network exists
 docker network ls | Select-String wikigraph-net
-docker info --format '{{.MemTotal}}' 
 ```
 
-The first should print a line with `wikigraph-net` and driver `bridge`. The second prints Docker's memory in bytes — divide by 1073741824 for GB and confirm it matches what you set.
+Divide `MemTotal` by 1073741824 for GB. **If you edited `.wslconfig`, this is your proof it took effect** — if the number still matches the old default, the file is malformed or you skipped `wsl --shutdown`.
+
+Confirm sparse mode:
+
+```powershell
+wsl --manage docker-desktop --get-sparse
+```
+
+Record all of it in `NOTES.md`.
 
 ### If it breaks
 
 - **`network with name wikigraph-net already exists`** — good, it's there. Move on.
-- **Settings → Resources shows no Advanced tab** — you're on the Hyper-V backend or an older version. The WSL2 backend is the default and better; check **Settings → General → Use the WSL 2 based engine**. With the WSL2 backend, disk limits are managed by WSL rather than Docker Desktop, and you may need to set them in `%UserProfile%\.wslconfig` instead. If you go that route, restart WSL with `wsl --shutdown` after editing.
+- **`.wslconfig` changes have no effect** — three usual causes, in order of likelihood: you didn't run `wsl --shutdown`; the file has a `.txt` extension because Notepad added one (check with `Get-ChildItem $env:USERPROFILE\.wslconfig`); or there's a syntax error, in which case WSL ignores the file *silently* and boots with defaults. Confirm via `docker info`, never by assuming.
+- **`wsl --manage` is not a recognized option** — you're on the legacy inbox WSL. `wsl --update` to get the Store version, then retry.
+- **Docker Desktop won't start after `wsl --shutdown`** — expected; it needs a manual restart. Quit it from the tray and relaunch.
+- **`C:` filling up even though you keep running `db-nuke`** — the VHDX is not sparse. That's 3c. To reclaim space already lost, either `--set-sparse true` (which compacts on the next shutdown) or reset the disk image from Docker Desktop settings.
+- **You genuinely need a VHD size *limit*** (e.g. to stop a runaway load consuming the whole drive) — that's `defaultVhdSize` under `[wsl2]`, but it only applies to newly created VHDs, so it won't constrain Docker's existing disk. In practice, free space on the host drive is the limit that binds.
 
 ---
 
@@ -560,7 +643,7 @@ networks:
     external: true
 ```
 
-> **Tuning note.** `shared_buffers=2GB` and `effective_cache_size=6GB` assume you gave Docker ~8 GB. If you gave it 16 GB, use `4GB` and `12GB`. If you gave it 4 GB, use `1GB` and `3GB`. The ratio matters more than the absolute number.
+> **Tuning note.** `shared_buffers=2GB` and `effective_cache_size=6GB` assume the Docker daemon has ~8 GB — which on the WSL2 backend is whatever the WSL VM got, i.e. 50% of system RAM unless you capped it in `.wslconfig`. Use the `docker info` number you recorded in Step 3: set `shared_buffers` to ~25% of it and `effective_cache_size` to ~75%. At 16 GB that's `4GB` / `12GB`; at 4 GB, `1GB` / `3GB`. The ratio matters more than the absolute number.
 
 > ### ⚠️ Never bind-mount PGDATA to a Windows path
 >
@@ -3063,7 +3146,7 @@ One deliberate simplification to revisit: **do not partition `stg.pagelink` duri
 | Unbounded Airflow parallelism | Laptop unusable; healthy tasks marked zombie | Pools, `max_active_runs` |
 | Indexes present during bulk load | Load takes ~5× longer | Create indexes after loading |
 | Unpinned dbt deps | Pulls a dbt 2.0 alpha; "postgres adapter not supported by dbt Fusion" | Pin with `<2.0` upper bounds |
-| Docker disk image too small | Postgres dies mid-load, data directory unrecoverable | Raise it in Step 3, before you need it |
+| Host drive fills up (WSL2 VHDX only grows) | Postgres dies mid-load, data directory unrecoverable | Make the VHD sparse in Step 3c; watch free space, not the WSL size cap |
 | dbt schema concatenation | Tables land in `stg_mart` | The `generate_schema_name` override |
 
 ---
