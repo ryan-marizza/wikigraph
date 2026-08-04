@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+src/wikigraph/__init__.py
+src/wikigraph/config.py
+src/wikigraph.egg-info/PKG-INFO
+src/wikigraph.egg-info/SOURCES.txt
+src/wikigraph.egg-info/dependency_links.txt
+src/wikigraph.egg-info/requires.txt
+src/wikigraph.egg-info/top_level.txt
