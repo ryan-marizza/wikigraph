@@ -1,0 +1,15 @@
+# Normalize text files in the repo to LF. Critical on Windows:
+# anything that runs inside a Linux container MUST have LF endings.
+* text=auto eol=lf
+
+# Explicitly force LF on things Linux executes or parses.
+*.sh      text eol=lf
+*.sql     text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+Dockerfile text eol=lf
+
+# Binary — never touch these.
+*.parquet binary
+*.xml.bz2 binary
+*.png     binary

@@ -17,11 +17,34 @@ from datetime import datetime
 from airflow.sdk import Asset, Variable, dag, task
 
 # --- Declare the assets -------------------------------------------------
-# The string is just a unique identifier — a URI by convention. Airflow does
-# not read or validate the underlying data; it only tracks the "updated"
-# signal. Define these once and import them wherever they're needed.
-PAGE_EDGES = Asset("postgres://wikigraph/page_edges")
-PAGERANK_SCORES = Asset("postgres://wikigraph/pagerank_scores")
+# An Asset has a NAME (what you see in the UI) and a URI (the identity key
+# Airflow uses to match producers to consumers). If you pass only one
+# positional string, it's used as BOTH.
+#
+# Airflow never reads the underlying data — it only tracks the "updated"
+# signal. But it DOES validate the URI: providers register normalizers for
+# their schemes, and `postgres://` requires the full
+# host:port/database/schema/table form. Get it wrong and the DAG fails to
+# import.
+#
+# Define these once, in a shared module, and import them wherever needed.
+PAGE_EDGES = Asset(
+    name="page_edges",
+    uri="postgres://postgres:5432/wikigraph/public/page_edges",
+)
+PAGERANK_SCORES = Asset(
+    name="pagerank_scores",
+    uri="postgres://postgres:5432/wikigraph/public/pagerank_scores",
+)
+
+# If you don't want a provider validating your URIs at all, use a scheme
+# nobody has registered — or no scheme, just a plain name:
+#
+#     PAGE_EDGES = Asset("wikigraph/page_edges")
+#
+# That's perfectly valid and is often the better choice while prototyping.
+# The typed-URI form only earns its keep once you want the provider's
+# lineage integrations to understand what the asset points at.
 
 
 # =========================================================================

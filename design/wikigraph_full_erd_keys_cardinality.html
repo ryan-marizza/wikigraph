@@ -1,0 +1,96 @@
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Entity relationship diagram of the WikiGraph warehouse showing raw, staging and mart tables with their primary and foreign keys.</h2>
+<div id="erd" style="padding:1rem 0;width:100%;overflow-x:auto"><div style="color:var(--text-secondary);font-family:var(--font-sans);font-size:14px">Rendering schema…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+const def = `erDiagram
+  raw_page ||--|| stg_page : "typed, ns=0 only"
+  stg_page ||--o{ stg_pagelink : "wikitext parsed into"
+  stg_page ||--o| dim_article : "non-redirects become"
+  stg_page ||--o{ article_alias : "redirects become"
+  stg_pagelink ||--o{ fct_article_link : "deduped into"
+  stg_pagelink ||--o| fct_first_link : "min unflagged ordinal"
+  dim_article ||--o{ article_alias : "has"
+  dim_article ||--o{ fct_article_link : "links from"
+  dim_article ||--|| fct_first_link : "has"
+  dim_article ||--|| fct_first_link_path : "walks to"
+  dim_article ||--|| article_search : "indexed as"
+  dim_article ||--o{ bridge_article_category : ""
+  dim_category ||--o{ bridge_article_category : ""
+  fct_first_link_cycle ||--o{ fct_first_link_path : "attracts"
+
+  raw_page {
+    integer page_id
+    text shard_name "LIST partition key"
+    text title
+    text wikitext "TOAST, ~62GB"
+  }
+  stg_page {
+    integer page_id PK
+    text norm_title UK
+    boolean is_redirect
+    text redirect_to_norm
+  }
+  stg_pagelink {
+    integer src_page_id PK "HASH partition key"
+    integer ordinal PK
+    text target_norm
+    smallint target_ns
+    boolean in_parens "6 context flags"
+  }
+  dim_article {
+    integer article_id PK
+    text norm_title UK
+    integer in_degree
+    float pagerank
+  }
+  article_alias {
+    text alias_norm PK
+    integer article_id PK,FK
+    text alias_type PK "canonical|redirect|anchor"
+    real weight
+  }
+  fct_article_link {
+    integer src_article_id PK,FK
+    integer dst_article_id PK,FK
+    smallint link_count
+    boolean via_redirect
+  }
+  fct_first_link {
+    integer src_article_id PK,FK
+    integer dst_article_id FK "NULL = dead end"
+    integer ordinal
+    smallint rule_version
+  }
+  fct_first_link_path {
+    integer src_article_id PK,FK
+    smallint steps_to_terminal
+    text terminal_type
+    integer cycle_id FK
+  }
+  fct_first_link_cycle {
+    integer cycle_id PK
+    smallint cycle_length
+    integer basin_size
+  }
+  dim_category {
+    integer category_id PK
+    text norm_title UK
+  }
+  bridge_article_category {
+    integer article_id PK,FK
+    integer category_id PK,FK
+  }
+  article_search {
+    integer article_id PK,FK
+    tsvector tsv "GIN"
+    text search_text
+    float pagerank
+  }`;
+mermaid.initialize({startOnLoad:false, theme: dark ? 'dark' : 'default', er:{useMaxWidth:true, entityPadding:12}, fontFamily:'var(--font-sans)'});
+mermaid.render('erdsvg', def).then(function(r){
+  document.getElementById('erd').innerHTML = r.svg;
+}).catch(function(e){
+  document.getElementById('erd').innerHTML = '<pre style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);white-space:pre-wrap">'+def+'</pre>';
+});
+</script>
