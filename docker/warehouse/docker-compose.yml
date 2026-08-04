@@ -1,0 +1,172 @@
+name: wikigraph-warehouse
+
+# Tuned for a WSL2 VM with ~45 GB RAM.
+#
+# MEMORY BUDGET -- read this before changing numbers:
+#   45 GB   total WSL2 VM memory (what `docker info` reports)
+#  -  9 GB   Airflow stack: scheduler, dag-processor, worker, triggerer,
+#            apiserver, its own metadata Postgres, plus 3 concurrent parse tasks
+#  = 36 GB   available to this container
+#   32 GB   hard limit set below, leaving ~4 GB slack so the Linux OOM killer
+#            never has to choose between Postgres and the scheduler
+#
+# The 45 GB is SHARED with Airflow. Tuning Postgres as if it owns all of it is
+# the mistake that gets the postmaster OOM-killed mid-load, which forces crash
+# recovery and looks like data corruption.
+
+services:
+  warehouse:
+    image: postgres:17
+    container_name: wikigraph-warehouse
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${PG_DB}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${PG_HOST_PORT:-5433}:5432"
+    volumes:
+      - wikigraph_pgdata:/var/lib/postgresql/data
+
+    # Parallel query workers exchange tuples through /dev/shm. Docker's default
+    # is 64 MB, which causes "could not resize shared memory segment" errors
+    # under parallel scans. Raised because we now allow more parallel workers.
+    shm_size: 2gb
+
+    # Hard ceiling. Without this, Postgres and Airflow compete freely for the
+    # VM's 45 GB and the kernel picks a victim under pressure.
+    deploy:
+      resources:
+        limits:
+          memory: 32G
+        reservations:
+          memory: 12G
+
+    command:
+      - postgres
+
+      # ================= MEMORY =================
+
+      # ~28% of the container's 36 GB budget. Postgres's own page cache.
+      # Counter-intuitively you do NOT want this at 50%+: past ~16 GB the
+      # returns flatten (double-buffering against the OS cache, longer
+      # checkpoints) and you're better off leaving RAM to the kernel.
+      - -c
+      - shared_buffers=10GB
+
+      # NOT an allocation -- a hint to the planner about how much data it can
+      # assume is cached between shared_buffers and the OS page cache. Setting
+      # it high makes the planner prefer index scans over sequential scans.
+      - -c
+      - effective_cache_size=24GB
+
+      # ---- work_mem: the one that bites people ----
+      # This is per SORT/HASH NODE, per PARALLEL WORKER -- not per query and
+      # not per connection. Worst case:
+      #   concurrent_queries x nodes_per_query x (1 + parallel_workers) x work_mem
+      # Here: ~6 x 2 x 5 x 256MB = ~15 GB worst case, which fits the budget
+      # because our concurrency is genuinely low (2 COPY streams + dbt threads=4).
+      # If you raise dbt's `threads:` above 4, recompute this.
+      - -c
+      - work_mem=256MB
+
+      # Used by CREATE INDEX, VACUUM, ALTER TABLE. Kept moderate here because
+      # autovacuum can run autovacuum_max_workers (3) copies concurrently.
+      # For the big GIN index builds in Step 14+, raise it per-session instead:
+      #     SET maintenance_work_mem = '8GB'; CREATE INDEX ...;
+      - -c
+      - maintenance_work_mem=2GB
+
+      # Decouples autovacuum from the above so raising maintenance_work_mem
+      # never multiplies into 3 background workers eating 6 GB.
+      - -c
+      - autovacuum_work_mem=512MB
+
+      # ================= WAL / BULK LOAD =================
+
+      # Bigger = fewer checkpoints during COPY = materially faster loads.
+      # ⚠️ WSL2 NOTE: these WAL files are real bytes inside the Docker VHDX,
+      # which grows and does not shrink unless you made it sparse (Step 3c).
+      # 16 GB here means up to 16 GB permanently claimed on your Windows drive.
+      - -c
+      - max_wal_size=16GB
+      - -c
+      - min_wal_size=2GB
+      - -c
+      - checkpoint_timeout=30min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_compression=zstd
+
+      # DEV ONLY. A crash can lose the last ~200ms of commits. Not fsync=off --
+      # corruption is still impossible. Correct here because every row is
+      # rebuildable from the XML. Do not carry this into a real system.
+      - -c
+      - synchronous_commit=off
+
+      # ================= PLANNER (SSD) =================
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+
+      # ================= PARALLELISM =================
+      # ⚠️ THESE DEPEND ON CPU COUNT, NOT RAM. Check yours:
+      #     docker info --format '{{.NCPU}}'
+      # Then set:
+      #   max_worker_processes            = NCPU
+      #   max_parallel_workers            = NCPU
+      #   max_parallel_workers_per_gather = NCPU/2, capped at 6
+      #   max_parallel_maintenance_workers= 4
+      # Values below assume 8 logical CPUs. Adjust before first load.
+      - -c
+      - max_worker_processes=24
+      - -c
+      - max_parallel_workers=24
+      - -c
+      - max_parallel_workers_per_gather=6
+      - -c
+      - max_parallel_maintenance_workers=4
+
+      # Low concurrency by design. Each connection reserves backend memory, and
+      # capping this is what makes the generous work_mem above safe.
+      - -c
+      - max_connections=50
+
+      # ================= PARTITIONING =================
+      - -c
+      - enable_partition_pruning=on
+      - -c
+      - enable_partitionwise_join=on
+      - -c
+      - enable_partitionwise_aggregate=on
+
+      # ================= OBSERVABILITY =================
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - track_io_timing=on
+      - -c
+      - log_min_duration_statement=5000
+      - -c
+      - log_checkpoints=on
+      - -c
+      - log_autovacuum_min_duration=0
+      - -c
+      - log_temp_files=0
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${PG_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  wikigraph_pgdata:
+
+networks:
+  default:
+    name: wikigraph-net
+    external: true
