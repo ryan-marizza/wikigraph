@@ -1,0 +1,5 @@
+TODO:
+
+-write tests (test_parse.py and test_shards.py)
+-get pytest working in github actions
+-get Pylint working in github actions
