@@ -13,4 +13,7 @@
 - Free space on raw_data drive: 3072.9 GB
 
 ## Measurements
-(filled in as we go)
+## Disk throughput (Step 6)
+- Docker bind mount read: 233.3 MB/s
+- Same read on Windows host: 6,614 MB/s (likely cache-assisted)
+- Decision: Stay on C:\ — I/O far exceeds expected parse throughput (~60 MB/s)
