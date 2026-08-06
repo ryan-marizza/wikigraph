@@ -25,20 +25,21 @@ def q(tag:str) -> str:
     lxml reports tags as '{http://...}page', not 'page'."""
     return f"{{{MW_NS}}}{tag}"
 
-SCHEMA = pa.schema(
+SCHEMA = pa.schema([
     ("page_id",         pa.int32()),
     ("dump_date",       pa.date32()),
     ("shard_name",      pa.string()),
     ("title",           pa.string()),
     ("namespace",       pa.int16()),
     ("is_redirect",     pa.bool_()),
+    ("redirect_target", pa.string()),
     ("revision_id",     pa.int64()),
     ("revision_ts",     pa.timestamp("us", tz="UTC")),
     ("contributor_name",pa.string()),
     ("contributor_id",  pa.int64()),
     ("text_bytes",      pa.int32()),
     ("wikitext",        pa.string())
-)
+])
 
 def _ts(raw: str | None):
     if not raw:
@@ -60,7 +61,8 @@ def _page_to_row(elem, shard_name:str, dump_date) -> dict:
         contrib = rev.find(q("contributor"))
         if contrib is not None:
             # Anonymous edits have <ip> instead of <username>.
-            contributor_name = contrib.findtext(q("username"))
+            contributor_name = contrib.findtext(q("username")) or contrib.findtext(q("ip"))
+
             cid = contrib.findtext(q("id"))
             contributor_id = int(cid) if cid else None
 

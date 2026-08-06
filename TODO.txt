@@ -1,5 +1,5 @@
 TODO:
 
--write tests (test_parse.py and test_shards.py)
+-write tests (test_parse.py and test_shards.py) and get tests passing
 -get pytest working in github actions
 -get Pylint working in github actions
