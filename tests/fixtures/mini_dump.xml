@@ -1,0 +1,75 @@
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.11/" version="0.11" xml:lang="en">
+  <siteinfo><sitename>Wikipedia</sitename></siteinfo>
+  <page>
+    <title>Dog</title>
+    <ns>0</ns>
+    <id>101</id>
+    <revision>
+      <id>9001</id>
+      <timestamp>2026-06-01T12:00:00Z</timestamp>
+      <contributor><username>Alice</username><id>55</id></contributor>
+      <text bytes="42" xml:space="preserve">The [[domestic dog]] is a [[mammal]].</text>
+    </revision>
+  </page>
+  <page>
+    <title>Doggo</title>
+    <ns>0</ns>
+    <id>102</id>
+    <redirect title="Dog" />
+    <revision>
+      <id>9002</id>
+      <timestamp>2025-01-02T03:04:05Z</timestamp>
+      <contributor><ip>192.0.2.7</ip></contributor>
+      <text bytes="20" xml:space="preserve">#REDIRECT [[Dog]]</text>
+    </revision>
+  </page>
+  <page>
+    <title>Talk:Dog</title>
+    <ns>1</ns>
+    <id>103</id>
+    <revision>
+      <id>9003</id>
+      <timestamp>2024-05-05T00:00:00Z</timestamp>
+      <contributor><username>Bob</username><id>66</id></contributor>
+      <text bytes="5" xml:space="preserve">hi</text>
+    </revision>
+  </page>
+  <page>
+    <title>Salt &amp; Pepper</title>
+    <ns>0</ns>
+    <id>104</id>
+    <revision>
+      <id>9004</id>
+      <timestamp>2023-03-03T09:09:09Z</timestamp>
+      <contributor><username>Carol</username><id>77</id></contributor>
+      <text bytes="0" xml:space="preserve"></text>
+    </revision>
+  </page>
+  <page>
+    <title>Empty Page</title>
+    <ns>0</ns>
+    <id>105</id>
+    <revision>
+      <id>9005</id>
+      <timestamp>2022-02-02T02:02:02Z</timestamp>
+      <contributor><username>Dave</username></contributor>
+    </revision>
+  </page>
+  <page>
+    <title>Two Revisions</title>
+    <ns>0</ns>
+    <id>106</id>
+    <revision>
+      <id>9006</id>
+      <timestamp>2021-01-01T01:01:01Z</timestamp>
+      <contributor><username>Eve</username><id>88</id></contributor>
+      <text bytes="3" xml:space="preserve">aaa</text>
+    </revision>
+    <revision>
+      <id>9007</id>
+      <timestamp>2021-02-01T01:01:01Z</timestamp>
+      <contributor><username>Eve</username><id>88</id></contributor>
+      <text bytes="3" xml:space="preserve">bbb</text>
+    </revision>
+  </page>
+</mediawiki>

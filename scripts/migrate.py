@@ -53,6 +53,7 @@ def ensure_roles(conn: psycopg.Connection) -> None:
         print("Role analyst created")
 
 def apply(conn: psycopg.Connection) -> None:
+    """Run every unapplied V*.sql migration in version order, one transaction each."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS public.schema_migrations (
             version TEXT PRIMARY KEY,
@@ -84,10 +85,15 @@ def apply(conn: psycopg.Connection) -> None:
             conn.commit()
         except Exception:
             conn.rollback()
-            print(f"FAILED on {path.name}, rolling back. Fix the error and re-run this script.", file=sys.stderr)
+            print(
+                f"FAILED on {path.name}, rolling back. "
+                "Fix the error and re-run this script.",
+                file=sys.stderr,
+            )
             raise
 
 def main() -> None:
+    """Entry point: ensure roles exist, then apply pending migrations."""
     with psycopg.connect(DSN, autocommit=False) as conn:
         ensure_roles(conn)
         conn.commit()

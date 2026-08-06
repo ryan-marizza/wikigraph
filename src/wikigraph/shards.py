@@ -1,3 +1,4 @@
+"""Discover dump shards on disk and parse their partition keys from filenames."""
 from __future__ import annotations
 
 import re
@@ -14,6 +15,7 @@ SHARD_RE = re.compile(r"enwiki-(?P<dump>\d{4}-\d{2}-\d{2})-(?P<range>p\d+p\d+)\.
 
 @dataclass(frozen=True)
 class Shard:
+    """One dump shard file: its partition key, dump date, path and size."""
     name: str
     dump_date: str
     path: str

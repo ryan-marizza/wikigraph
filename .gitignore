@@ -14,6 +14,9 @@ __pycache__/
 # --- Data ---
 *.xml
 *.bz2
+# ...but test fixtures are source, not data. Without this, CI checks out a repo
+# with no mini_dump.xml and every test in test_parse.py fails.
+!tests/fixtures/*.xml
 
 
 .env

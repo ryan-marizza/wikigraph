@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5"]
+dev = ["pytest>=8", "ruff>=0.5", "pylint>=3.2"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -20,6 +20,20 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.pylint.main]
+py-version = "3.11"
+# lxml.etree is a C extension; without this pylint can't see iterparse/find and
+# reports c-extension-no-member on every call.
+extension-pkg-allow-list = ["lxml"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.design]
+# _page_to_row unpacks one XML element into 13 columns. The locals are the
+# point of the function, not a smell.
+max-locals = 20
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

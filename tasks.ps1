@@ -6,7 +6,7 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [ValidateSet('db-up','db-down','db-nuke','db-shell','db-logs','migrate',
-                 'test','lint','airflow-up','airflow-down','airflow-build','af','dbt')]
+                 'test','lint','pylint','airflow-up','airflow-down','airflow-build','af','dbt')]
     [string]$Command,
 
     # Everything after the command is passed through (used by 'af' and 'dbt').
@@ -65,6 +65,11 @@ switch ($Command) {
     }
     'test' { python -m pytest -q }
     'lint' { python -m ruff check src tests scripts }
+    # Mirrors the lint job in .github/workflows/ci.yml -- keep the two in sync.
+    'pylint' {
+        python -m pylint src\wikigraph scripts
+        python -m pylint tests --disable=missing-module-docstring,missing-function-docstring
+    }
 
     'airflow-build' { docker build -t $env:AIRFLOW_IMAGE_NAME (Join-Path $AirflowDir 'docker') }
     'airflow-up'    { Invoke-Compose $AirflowDir @('up','-d') }

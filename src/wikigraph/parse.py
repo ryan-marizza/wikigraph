@@ -9,7 +9,6 @@ Design constraints this file satisfies:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from importlib.resources import path
 from pathlib import Path
 from typing import Iterator
 
@@ -102,13 +101,13 @@ def iter_pages(path:str | Path, shard_name: str, dump_date) -> Iterator[tuple[di
     """
     context = etree.iterparse(str(path), events=("end",), tag=q("page"), huge_tree=True)
     for _event, elem in context:
-       n_rev = len(elem.findall(q("revision")))
-       yield _page_to_row(elem, shard_name, dump_date), n_rev
+        n_rev = len(elem.findall(q("revision")))
+        yield _page_to_row(elem, shard_name, dump_date), n_rev
 
-       elem.clear()
-       parent = elem.getparent()
-       while elem.getprevious() is not None:
-           del parent[0]
+        elem.clear()
+        parent = elem.getparent()
+        while elem.getprevious() is not None:
+            del parent[0]
     del context
 
 

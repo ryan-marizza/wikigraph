@@ -17,5 +17,6 @@ DUMP_DATE = os.environ.get("WIKIGRAPH_DUMP_DATE", "2026-07-01")
 # MediaWiki export schema namespace. Every XML tag is prefixed with this.
 MW_NS = "http://www.mediawiki.org/xml/export-0.11/"
 
-#Rows per Parqet row group. This is a tradeoff between memory usage and speed. Lower values use less memory but are slower to read/write.
+# Rows per Parquet row group. Tradeoff between memory and speed: lower values
+# use less memory but are slower to read and write.
 PARQUET_ROW_GROUP = 50_000
