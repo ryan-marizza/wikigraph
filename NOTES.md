@@ -17,3 +17,18 @@
 - Docker bind mount read: 233.3 MB/s
 - Same read on Windows host: 6,614 MB/s (likely cache-assisted)
 - Decision: Stay on C:\ — I/O far exceeds expected parse throughput (~60 MB/s)
+
+
+## Shard p10p1400054 parse (Step 8)
+- Input XML size: 9.9 GB
+- Wall time: 1.4 min
+- Throughput: 10,803 pages/s, 126MB/s of XML
+- Peak RSS: 3 GB        <- if this grew all run, the cleanup is broken
+- pages_seen: 924050
+- pages_written (ns=0): 717051
+- multi_revision_pages: 0  <- MUST be 0
+- Parquet out: 2970 MB  (compression ratio 3.34 x)
+- Redirect share: 46%
+  Design doc guessed 26.9% (biased head sample) vs 61% (published estimate).
+  Measured answer: 46%
+- Extrapolated to 19 shards: 0.44 hours, 55.1 GB Parquet
