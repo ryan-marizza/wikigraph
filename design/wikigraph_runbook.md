@@ -21,25 +21,25 @@ Do not skip **Verify**. The whole point of this ordering is that each step is pr
 
 ## Table of contents
 
-| Step | What | Est. |
-|---|---|---|
-| 0 | Orientation: the two rules | 10 min |
-| 1 | Repo scaffolding + Windows git hygiene | 30 min |
-| 2 | Python package and local venv | 30 min |
-| 3 | WSL2 resource prep: disk, RAM, network | 20 min |
-| 4 | The warehouse Postgres container | 45 min |
-| 5 | Roles, schemas, and a migration runner | 1 hr |
-| 6 | Measure your disk before optimizing it | 20 min |
-| 7 | The parser, as a testable library | 2 hr |
-| 8 | Run the parser on a real shard | 1 hr + wait |
-| 9 | The loader: Parquet → Postgres | 1.5 hr |
-| 10 | Custom Airflow image + warehouse wiring | 1.5 hr |
-| 11 | Pools and a smoke DAG | 45 min |
-| 12 | The ingest DAG | 2 hr |
-| 13 | dbt: what it is and project setup | 1 hr |
-| 14 | Your first dbt models and tests | 2 hr |
-| 15 | Cosmos: dbt models as Airflow tasks | 1 hr |
-| 16 | End-to-end verification | 45 min |
+| Step | What                                    | Est.        |
+| ---- | --------------------------------------- | ----------- |
+| 0    | Orientation: the two rules              | 10 min      |
+| 1    | Repo scaffolding + Windows git hygiene  | 30 min      |
+| 2    | Python package and local venv           | 30 min      |
+| 3    | WSL2 resource prep: disk, RAM, network  | 20 min      |
+| 4    | The warehouse Postgres container        | 45 min      |
+| 5    | Roles, schemas, and a migration runner  | 1 hr        |
+| 6    | Measure your disk before optimizing it  | 20 min      |
+| 7    | The parser, as a testable library       | 2 hr        |
+| 8    | Run the parser on a real shard          | 1 hr + wait |
+| 9    | The loader: Parquet → Postgres          | 1.5 hr      |
+| 10   | Custom Airflow image + warehouse wiring | 1.5 hr      |
+| 11   | Pools and a smoke DAG                   | 45 min      |
+| 12   | The ingest DAG                          | 2 hr        |
+| 13   | dbt: what it is and project setup       | 1 hr        |
+| 14   | Your first dbt models and tests         | 2 hr        |
+| 15   | Cosmos: dbt models as Airflow tasks     | 1 hr        |
+| 16   | End-to-end verification                 | 45 min      |
 
 ---
 
@@ -314,6 +314,7 @@ pip install -e ".[dev]"
 ```
 
 > **If `Activate.ps1` is blocked** with "running scripts is disabled on this system," run this once (it allows locally-created scripts, still blocks unsigned downloads):
+> 
 > ```powershell
 > Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 > ```
@@ -468,9 +469,11 @@ sparseVhd=true
 Sizes default to bytes; append `GB` or `MB` as shown. Any Windows paths in this file need **escaped backslashes** (`C:\\temp\\...`).
 
 > **The 8-second rule.** WSL applies `.wslconfig` only when the VM fully stops, which takes about 8 seconds after the last distro shell closes. Editing the file and reopening a terminal does *not* pick up changes. Always:
+> 
 > ```powershell
 > wsl --shutdown
 > ```
+> 
 > then restart Docker Desktop. If the file is malformed, WSL silently ignores it and boots with defaults — so always verify (below) rather than assuming.
 
 > Microsoft now ships a **WSL Settings** GUI app (search the Start menu) that edits this file for you, and the docs recommend it over hand-editing. Either is fine; the file is what actually matters.
@@ -646,7 +649,7 @@ networks:
 > **Tuning note.** `shared_buffers=2GB` and `effective_cache_size=6GB` assume the Docker daemon has ~8 GB — which on the WSL2 backend is whatever the WSL VM got, i.e. 50% of system RAM unless you capped it in `.wslconfig`. Use the `docker info` number you recorded in Step 3: set `shared_buffers` to ~25% of it and `effective_cache_size` to ~75%. At 16 GB that's `4GB` / `12GB`; at 4 GB, `1GB` / `3GB`. The ratio matters more than the absolute number.
 
 > ### ⚠️ Never bind-mount PGDATA to a Windows path
->
+> 
 > You might be tempted to write `- ./pgdata:/var/lib/postgresql/data` so you can "see the files." **Do not.** Postgres relies on POSIX file permissions and `fsync()` semantics that the Windows filesystem bridge does not provide correctly. The container will either refuse to start with a permissions error, or — worse — appear to work and corrupt data silently under load. The named volume `wikigraph_pgdata` lives inside Docker's Linux VM where Postgres gets real POSIX behavior. This applies to *any* database in Docker on Windows or macOS, not just this one.
 
 > **Why `postgres:17` and not `18`?** 17 is mature, and every tuning guide and Stack Overflow answer you'll find applies to it directly. Postgres 18 also changed the default `PGDATA` layout to a version-specific path (`/var/lib/postgresql/18/docker`), which would silently break the `PGDATA` line above. Not worth the friction for this project. Nothing in the design depends on 18-only features.
@@ -802,11 +805,11 @@ git commit -m "Warehouse Postgres container, tuned for bulk load"
 
 **Roles.** You're going to create three database roles instead of doing everything as `postgres`. In production, the process that loads raw data should not have permission to drop your marts — that separation is what stops a buggy script from being a catastrophe. Here it costs you ten minutes and builds the habit. It also makes permission errors *informative*: if dbt gets "permission denied for schema raw," you immediately know your grant model is wrong, rather than discovering six weeks later that everything runs as superuser.
 
-| Role | Owns | Can do |
-|---|---|---|
-| `etl` | schema `raw` | Create/truncate/load `raw.*`. Read-only elsewhere. |
-| `dbt` | schemas `stg`, `mart` | Read `raw.*`, create anything in `stg`/`mart`. |
-| `analyst` | nothing | `SELECT` on `mart.*`. No login — a group role you'd grant to humans. |
+| Role      | Owns                  | Can do                                                               |
+| --------- | --------------------- | -------------------------------------------------------------------- |
+| `etl`     | schema `raw`          | Create/truncate/load `raw.*`. Read-only elsewhere.                   |
+| `dbt`     | schemas `stg`, `mart` | Read `raw.*`, create anything in `stg`/`mart`.                       |
+| `analyst` | nothing               | `SELECT` on `mart.*`. No login — a group role you'd grant to humans. |
 
 **Migrations.** dbt will own `stg` and `mart` from Step 14 onward. But `raw` is *source-owned* DDL — dbt shouldn't manage it, and hand-typing `CREATE TABLE` into a GUI is exactly how environments drift until nobody can rebuild them. Numbered migration files plus a small runner give you: an ordered, replayable history; the ability to nuke and rebuild in under two minutes; and a diff in git for every schema change. This is what Flyway and Liquibase do — writing it once by hand is the fastest way to understand why they exist.
 
@@ -984,7 +987,7 @@ AS $$
     ) x;
 $$;
 
--- KNOWN GAP: does not unescape HTML entities. '&amp;' should become '&'.
+-- KNOWN GAP: does not unescape HTML entities. '&' should become '&'.
 -- This affects a small but nonzero fraction of titles. Measure the count once
 -- shard 0 is loaded (query in Step 16) before deciding whether to fix it.
 --   TODO(V00x): decide on entity handling based on measured impact.
@@ -1116,15 +1119,15 @@ SELECT t, public.norm_title(t) AS normalized FROM (VALUES
 
 Expected:
 
-| t | normalized |
-|---|---|
-| `New_York` | `New York` |
-| `New York` | `New York` |
-| `  Dog  ` | `Dog` |
-| `apple` | `Apple` |
-| `iPhone` | `IPhone` |
-| `A  b` | `A b` |
-| `` | `` |
+| t               | normalized      |
+| --------------- | --------------- |
+| `New_York`      | `New York`      |
+| `New York`      | `New York`      |
+| `  Dog  `       | `Dog`           |
+| `apple`         | `Apple`         |
+| `iPhone`        | `IPhone`        |
+| `A  b`          | `A b`           |
+| ``              | ``              |
 | `Salt & Pepper` | `Salt & Pepper` |
 
 The key ones: rows 1 and 2 must produce **identical** output (that's the join key working), and `iPhone` → `IPhone` is *correct* — MediaWiki genuinely uppercases only the first character. `apple` and `Apple` are the same page; `iPhone` and `IPhone` are the same page too, because only position 1 is case-insensitive.
@@ -1200,11 +1203,11 @@ Record both in `NOTES.md`:
 
 You'll get a parse throughput number in Step 8. Compare:
 
-| Bind mount read speed | What to do |
-|---|---|
-| **> 150 MB/s** | Stay on `C:\`. You are CPU-bound, not I/O-bound. Do nothing. |
-| **60–150 MB/s** | Stay for now. Revisit only if Step 8 shows parse throughput near your read speed. |
-| **< 60 MB/s** | Worth moving. See below. |
+| Bind mount read speed | What to do                                                                        |
+| --------------------- | --------------------------------------------------------------------------------- |
+| **> 150 MB/s**        | Stay on `C:\`. You are CPU-bound, not I/O-bound. Do nothing.                      |
+| **60–150 MB/s**       | Stay for now. Revisit only if Step 8 shows parse throughput near your read speed. |
+| **< 60 MB/s**         | Worth moving. See below.                                                          |
 
 Most modern Docker Desktop setups land in the first bucket.
 
@@ -1241,11 +1244,11 @@ This is the heart of the project and it's pure Python — no Airflow, no Docker,
 
 I measured this rather than repeating folklore. Parsing 200,000 synthetic pages, peak RSS:
 
-| Strategy | 50k pages | 100k | 150k | 200k |
-|---|---|---|---|---|
-| No cleanup | 162 MB | 307 MB | 453 MB | **599 MB** |
-| `elem.clear()` only | 23 MB | 30 MB | 36 MB | **43 MB** |
-| `clear()` + delete siblings | 16 MB | 16 MB | 16 MB | **16 MB** |
+| Strategy                    | 50k pages | 100k   | 150k   | 200k       |
+| --------------------------- | --------- | ------ | ------ | ---------- |
+| No cleanup                  | 162 MB    | 307 MB | 453 MB | **599 MB** |
+| `elem.clear()` only         | 23 MB     | 30 MB  | 36 MB  | **43 MB**  |
+| `clear()` + delete siblings | 16 MB     | 16 MB  | 16 MB  | **16 MB**  |
 
 Read that carefully, because it corrects a claim you'll see elsewhere: **`clear()` alone does not blow up.** It leaks about 100 bytes per page — real, linear, but at a few million pages per shard that's a few hundred MB, which is survivable, not an OOM. What it *does* do is make your memory usage a function of input size, which means it works on your test shard and gets slowly worse on the biggest one. The sibling-deletion idiom makes it genuinely flat, costs two extra lines, and removes the variable entirely. Use it — but now you know why, and you know it's about predictability rather than avoiding a crash.
 
@@ -1542,7 +1545,7 @@ def parse_shard_to_parquet(
     </revision>
   </page>
   <page>
-    <title>Salt &amp; Pepper</title>
+    <title>Salt & Pepper</title>
     <ns>0</ns>
     <id>104</id>
     <revision>
@@ -1582,14 +1585,14 @@ def parse_shard_to_parquet(
 </mediawiki>
 ```
 
-| Page | Pins down |
-|---|---|
-| `Dog` | the happy path |
-| `Doggo` | redirect flag + `redirect_target` + anonymous IP contributor (no `<id>`) |
-| `Talk:Dog` | ns≠0 must be counted in `pages_seen` but excluded from `pages_written` |
-| `Salt & Pepper` | XML entity in the title; `bytes="0"` must yield `0`, not `None` |
-| `Empty Page` | no `<text>` element at all — must not crash |
-| `Two Revisions` | the grain assertion must fire |
+| Page            | Pins down                                                                |
+| --------------- | ------------------------------------------------------------------------ |
+| `Dog`           | the happy path                                                           |
+| `Doggo`         | redirect flag + `redirect_target` + anonymous IP contributor (no `<id>`) |
+| `Talk:Dog`      | ns≠0 must be counted in `pages_seen` but excluded from `pages_written`   |
+| `Salt & Pepper` | XML entity in the title; `bytes="0"` must yield `0`, not `None`          |
+| `Empty Page`    | no `<text>` element at all — must not crash                              |
+| `Two Revisions` | the grain assertion must fire                                            |
 
 Create `tests/test_parse.py`:
 
@@ -2374,16 +2377,16 @@ Now you wrap working, tested code in orchestration. Note the ordering: the parse
 
 **Airflow concepts you need here, and no more:**
 
-| Concept | What it actually is |
-|---|---|
-| **DAG** | A Python file declaring tasks and their order. Re-parsed every ~30s, so it must import fast. |
-| **Task** | One unit of work. Retried independently. Has its own logs. |
-| **`@task`** | The TaskFlow decorator. Wraps a plain Python function. This is all you need. |
-| **XCom** | Return values passed between tasks, stored in the metadata DB. **Keep them small** — paths and counts, never DataFrames. |
-| **Connection** | A named credential looked up by `conn_id` instead of hardcoded. |
-| **Pool** | The semaphore from Step 11. |
-| **Dynamic task mapping** | `.expand()` — one task definition becomes N runtime instances. This is how you fan out over shards. |
-| **Params** | Runtime arguments you pass when triggering. Lets you run one shard without editing code. |
+| Concept                  | What it actually is                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| **DAG**                  | A Python file declaring tasks and their order. Re-parsed every ~30s, so it must import fast.                             |
+| **Task**                 | One unit of work. Retried independently. Has its own logs.                                                               |
+| **`@task`**              | The TaskFlow decorator. Wraps a plain Python function. This is all you need.                                             |
+| **XCom**                 | Return values passed between tasks, stored in the metadata DB. **Keep them small** — paths and counts, never DataFrames. |
+| **Connection**           | A named credential looked up by `conn_id` instead of hardcoded.                                                          |
+| **Pool**                 | The semaphore from Step 11.                                                                                              |
+| **Dynamic task mapping** | `.expand()` — one task definition becomes N runtime instances. This is how you fan out over shards.                      |
+| **Params**               | Runtime arguments you pass when triggering. Lets you run one shard without editing code.                                 |
 
 **The single most important idea in this DAG is that the assertions raise.** A task that silently loads zero rows is a bug you discover four transformations later, with no idea where it started. Every check below fails at the earliest point the problem is detectable:
 
@@ -2934,15 +2937,21 @@ Record all of these in `NOTES.md` and update the sizing table in your design doc
 ### If it breaks
 
 - **`unique` test on `norm_title` FAILS** — this is the important one, and it's a real finding, not a nuisance. Inspect the collisions:
+  
   ```sql
   SELECT norm_title, count(*), array_agg(title)
   FROM stg.stg_page GROUP BY 1 HAVING count(*) > 1
   ORDER BY 2 DESC LIMIT 20;
   ```
+  
   Look at the `title` arrays. If they're genuinely the same page under MediaWiki rules (e.g. `Foo bar` and `Foo_bar`), your data has a real duplicate and you should investigate the source. If they're *different* pages that your function wrongly merged, `norm_title` is too aggressive — fix it in a new migration (`V004__norm_title_fix.sql`), never by editing V002, which has already been applied.
+
 - **`Compilation Error: model 'stg_page' depends on a source named 'raw.page' which was not found`** — `sources.yml` must be under `models/`, and the `name:`/`schema:` must both be `raw`.
+
 - **Models land in a schema called `stg_stg` or `dbt_mart`** — the `generate_schema_name` macro isn't being picked up. Confirm it's in `macros/` and the macro name is exactly `generate_schema_name`.
+
 - **`permission denied for schema mart`** — `mart` must be owned by `dbt`. `\dn+` to check; re-run migrations if not.
+
 - **`function public.norm_title(text) does not exist`** — V002 didn't apply, or `dbt` lacks EXECUTE. Functions grant EXECUTE to PUBLIC by default, so this almost always means the migration didn't run.
 
 Commit:
@@ -3132,22 +3141,22 @@ One deliberate simplification to revisit: **do not partition `stg.pagelink` duri
 
 ## Pitfalls, ranked by how much time they'll cost you
 
-| Pitfall | Symptom | Fix |
-|---|---|---|
-| Appending instead of replacing on rerun | Duplicate rows; no idea when it started | `TRUNCATE` partition inside the load transaction |
-| Two implementations of title normalization | Joins silently drop or multiply rows — the hardest bug here to find | SQL function only; Python emits `target_raw` |
-| No `ANALYZE` after bulk load | A 10-second query takes 40 minutes | `ANALYZE` in the loader, every time |
-| Logic inside `@task` bodies | Every debug cycle costs a DAG re-parse | Package under `src/`, DAG just calls it |
-| Text-format `COPY` with wikitext | Mystery parse errors on ~0.1% of rows, deep into a load | `FORMAT BINARY` |
-| Bind-mounting PGDATA to a Windows path | Postgres won't start, or corrupts silently | Named volume, always |
-| CRLF line endings in files a container runs | `bad interpreter: /bin/bash^M`, or unrelated-looking errors | `.gitattributes` with `eol=lf` |
-| `elem.clear()` without deleting siblings | Memory grows with input size — works on your test shard, degrades on the biggest | The cleanup idiom in `iter_pages` |
-| Big objects through XCom | Metadata DB bloats; tasks crawl | Pass paths and counts only |
-| Unbounded Airflow parallelism | Laptop unusable; healthy tasks marked zombie | Pools, `max_active_runs` |
-| Indexes present during bulk load | Load takes ~5× longer | Create indexes after loading |
-| Unpinned dbt deps | Pulls a dbt 2.0 alpha; "postgres adapter not supported by dbt Fusion" | Pin with `<2.0` upper bounds |
-| Host drive fills up (WSL2 VHDX only grows) | Postgres dies mid-load, data directory unrecoverable | Make the VHD sparse in Step 3c; watch free space, not the WSL size cap |
-| dbt schema concatenation | Tables land in `stg_mart` | The `generate_schema_name` override |
+| Pitfall                                     | Symptom                                                                          | Fix                                                                    |
+| ------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Appending instead of replacing on rerun     | Duplicate rows; no idea when it started                                          | `TRUNCATE` partition inside the load transaction                       |
+| Two implementations of title normalization  | Joins silently drop or multiply rows — the hardest bug here to find              | SQL function only; Python emits `target_raw`                           |
+| No `ANALYZE` after bulk load                | A 10-second query takes 40 minutes                                               | `ANALYZE` in the loader, every time                                    |
+| Logic inside `@task` bodies                 | Every debug cycle costs a DAG re-parse                                           | Package under `src/`, DAG just calls it                                |
+| Text-format `COPY` with wikitext            | Mystery parse errors on ~0.1% of rows, deep into a load                          | `FORMAT BINARY`                                                        |
+| Bind-mounting PGDATA to a Windows path      | Postgres won't start, or corrupts silently                                       | Named volume, always                                                   |
+| CRLF line endings in files a container runs | `bad interpreter: /bin/bash^M`, or unrelated-looking errors                      | `.gitattributes` with `eol=lf`                                         |
+| `elem.clear()` without deleting siblings    | Memory grows with input size — works on your test shard, degrades on the biggest | The cleanup idiom in `iter_pages`                                      |
+| Big objects through XCom                    | Metadata DB bloats; tasks crawl                                                  | Pass paths and counts only                                             |
+| Unbounded Airflow parallelism               | Laptop unusable; healthy tasks marked zombie                                     | Pools, `max_active_runs`                                               |
+| Indexes present during bulk load            | Load takes ~5× longer                                                            | Create indexes after loading                                           |
+| Unpinned dbt deps                           | Pulls a dbt 2.0 alpha; "postgres adapter not supported by dbt Fusion"            | Pin with `<2.0` upper bounds                                           |
+| Host drive fills up (WSL2 VHDX only grows)  | Postgres dies mid-load, data directory unrecoverable                             | Make the VHD sparse in Step 3c; watch free space, not the WSL size cap |
+| dbt schema concatenation                    | Tables land in `stg_mart`                                                        | The `generate_schema_name` override                                    |
 
 ---
 
