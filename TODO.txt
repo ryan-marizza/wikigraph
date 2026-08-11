@@ -3,3 +3,35 @@ TODO:
 -write tests (test_parse.py and test_shards.py) and get tests passing
 -get pytest working in github actions
 -get Pylint working in github actions
+
+
+Eventually fix the FERNET_KEY and AIRFLOW_UID problems: from claude:
+
+Not harmful right now, but they're pointing at a real regression you should fix — and the cause is a change you just made.
+
+docker compose --env-file ..\.env replaces the default .env lookup; it doesn't add to it. Before Step 10, you ran compose from inside airflow-docker/ with no flag, so Compose read airflow-docker/.env — which is where the Airflow quickstart puts AIRFLOW_UID and FERNET_KEY. Now tasks.ps1 points at the repo-root .env, that file is no longer read at all, and any variable that lived only there comes through empty. The count pattern matches: FERNET_KEY warns once per service because it's in the x-airflow-common environment anchor that all nine inherit, AIRFLOW_UID warns once because only airflow-init references it.
+
+What each one actually does:
+
+FERNET_KEY is the symmetric key Airflow uses to encrypt connection passwords and Variables at rest in the metadata database. With it blank, Airflow silently falls back to a no-op cipher and stores those values in plaintext. Nothing breaks, and for this project it barely matters — your warehouse credentials arrive via AIRFLOW_CONN_WIKIGRAPH_WAREHOUSE as an environment variable, which never touches the metadata DB. But it's also not a value you want drifting, because it's what makes stored secrets portable across a docker compose down/up.
+
+AIRFLOW_UID exists so containers write files as your user on Linux hosts. On Docker Desktop for Windows it's cosmetic — the VM handles ownership — but leaving it empty means user: "${AIRFLOW_UID}:0" resolves to ":0", which is malformed. Set it to 50000, which is what the official docs recommend for non-Linux hosts.
+
+The fix, consistent with the runbook's one-.env-at-the-root design: open airflow-docker\.env, see everything it defines, and move those lines into the root .env.
+
+powershell
+Get-Content airflow-docker\.env
+
+Then append to the root .env:
+
+AIRFLOW_UID=50000
+FERNET_KEY=<paste generated key>
+
+Generate a key with the image you built in 10a, so you don't need cryptography in your venv:
+
+powershell
+docker run --rm wikigraph/airflow:local python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+Then .\tasks.ps1 airflow-down and airflow-up, and the warnings should be gone.
+
+Two things to watch. First, if you created any Connections or Variables through the Airflow UI while the key was blank, they're sitting in the metadata DB unencrypted, and once a real key is in place Airflow will try to decrypt them and throw InvalidToken. Given your 05_assets_and_connections.py DAG, that's plausible. The fix is just to delete and re-enter them, and it won't affect wikigraph_warehouse since that one is injected from the environment. Second, don't delete airflow-docker\.env yet — if anything else in it turns out to matter, you'll want the reference. Once the stack comes up clean, rename it to .env.bak rather than removing it, so a stray docker compose run from inside that directory can't quietly pick up a stale copy of a variable you've since changed at the root.

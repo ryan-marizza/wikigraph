@@ -94,7 +94,6 @@ def load_parquet(
         conn.commit()
 
         # 4. Refresh planner statistics. Do NOT skip this — see the note above.
-        #    ANALYZE cannot run inside the load transaction, hence the separate block.
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(sql.SQL("ANALYZE raw.{part}").format(part = sql.Identifier(part)))

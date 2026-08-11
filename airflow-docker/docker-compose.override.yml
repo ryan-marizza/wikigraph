@@ -1,0 +1,48 @@
+# Merged automatically with docker-compose.yaml.
+# Paths are relative to THIS file's directory (airflow-docker/).
+
+x-wikigraph-extra: &wikigraph-extra
+  volumes:
+    # Source shards: READ-ONLY. A pipeline must not be able to corrupt its input.
+    - ${WIKIGRAPH_RAW_DATA}:/opt/airflow/raw_data:ro
+    # Your package, bind-mounted so edits on Windows take effect immediately.
+    - ../src:/opt/airflow/src
+    # dbt project (Step 13).
+    - ../dbt:/opt/airflow/dbt
+    # Parquet scratch: a NAMED VOLUME, not a bind mount. This is the hot write
+    # path, and named volumes live in the VM's native filesystem — much faster
+    # than writing back through the Windows bridge.
+    - wikigraph_staging:/opt/airflow/staging
+  environment:
+    PYTHONPATH: /opt/airflow/src
+    WIKIGRAPH_RAW_DIR: /opt/airflow/raw_data
+    WIKIGRAPH_STAGING_DIR: /opt/airflow/staging
+    WIKIGRAPH_DUMP_DATE: ${WIKIGRAPH_DUMP_DATE}
+    # Airflow reads AIRFLOW_CONN_<ID> and registers a connection named
+    # 'wikigraph_warehouse' automatically — no clicking in the UI, nothing
+    # stored in the metadata DB. This is how real deployments inject secrets.
+    AIRFLOW_CONN_WIKIGRAPH_WAREHOUSE: ${AIRFLOW_CONN_WIKIGRAPH_WAREHOUSE}
+    PG_HOST: warehouse
+    PG_DB: ${PG_DB}
+    PG_DBT_USER: ${PG_DBT_USER}
+    PG_DBT_PASSWORD: ${PG_DBT_PASSWORD}
+  networks:
+    - default          # Airflow's own network, for its metadata DB
+    - wikigraph-net    # the shared network, so 'warehouse' resolves
+
+services:
+  # DELETE any service name your compose file doesn't have — an override for a
+  # nonexistent service is an error.
+  airflow-scheduler:     { <<: *wikigraph-extra }
+  airflow-dag-processor: { <<: *wikigraph-extra }
+  airflow-worker:        { <<: *wikigraph-extra }
+  airflow-triggerer:     { <<: *wikigraph-extra }
+  airflow-apiserver:     { <<: *wikigraph-extra }
+  airflow-init:          { <<: *wikigraph-extra }
+
+volumes:
+  wikigraph_staging:
+
+networks:
+  wikigraph-net:
+    external: true
