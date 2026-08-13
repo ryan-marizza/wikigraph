@@ -63,6 +63,8 @@ def render(obj) -> str:
 
 
 class FakeCopy:
+    """Mock psycopg COPY writer. Keeps the rows the loader streamed so tests can
+    compare the payload against the Parquet it came from."""
     def __init__(self, conn, stmt):
         self.conn = conn
         self.stmt = stmt
@@ -84,6 +86,8 @@ class FakeCopy:
 
 
 class FakeCursor:
+    """Mock psycopg cursor. Renders every statement to a string and hands it to
+    the connection's event log; cursors themselves hold no state."""
     def __init__(self, conn):
         self.conn = conn
 
@@ -104,6 +108,12 @@ class FakeCursor:
 
 
 class FakeConnection:
+    """Mock psycopg connection, and the recorder the assertions read.
+
+    Every call the loader makes appends to `events` in order, so tests can check
+    not just which statements were issued but the sequence they arrived in —
+    TRUNCATE before COPY, ANALYZE after commit.
+    """
     def __init__(self, dsn, **kwargs):
         self.dsn = dsn
         self.kwargs = kwargs
