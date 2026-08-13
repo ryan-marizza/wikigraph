@@ -7,24 +7,6 @@ import psycopg
 import pyarrow.parquet as pq
 from psycopg import sql
 
-# this is the SQL to create the raw.page table, which is partitioned by shard_name.
-"""CREATE TABLE IF NOT EXISTS raw.page (
-    page_id           integer     NOT NULL,
-    dump_date         date        NOT NULL,
-    shard_name        text        NOT NULL,
-    title             text        NOT NULL,   -- display form, as it appears in the XML
-    namespace         smallint    NOT NULL,
-    is_redirect       boolean     NOT NULL,
-    redirect_target   text,                   -- raw title from <redirect title="...">
-    revision_id       bigint,
-    revision_ts       timestamptz,
-    contributor_name  text,
-    contributor_id    bigint,
-    text_bytes        integer,
-    wikitext          text,                   -- large; Postgres TOASTs and compresses it
-    ingested_at       timestamptz NOT NULL DEFAULT now()
-) PARTITION BY LIST (shard_name);"""
-
 COLUMNS = [
     "page_id", "dump_date", "shard_name", "title", "namespace",
     "is_redirect", "redirect_target", "revision_id", "revision_ts",
@@ -100,28 +82,28 @@ def load_parquet(
 
         return {"shard_name": shard_name, "rows_loaded": rows, "partition": part}
 
-    def upsert_manifest(dsn: str, shard_name: str, dump_date, **fields) -> None:
-        """Record ingest state. Called at parse start, parse end, and load end.
+def upsert_manifest(dsn: str, shard_name: str, dump_date, **fields) -> None:
+    """Record ingest state. Called at parse start, parse end, and load end.
 
-        This table is how you answer 'what is actually in the warehouse and when did
-        it get there' three weeks from now, when the Airflow logs have rotated away.
-        """
-        if not fields:
-            return
-        cols = list(fields)
-        assignments = sql.SQL(", ").join(
-            sql.SQL("{} EXCLUDED.{}").format(sql.identifier(c), sql.identifier(c))
-            for c in cols
-        )
-        stmt = sql.SQL(
-            "INSERT INTO raw.ingest_manifest (shard_name, dump_date, {cols}) "
-            "VALUES (%s, %s, {ph}) "
-            "ON CONFLICT (shard_name, dump_date) DO UPDATE SET {assign}"
-        ).format(
-            cols=sql.SQL(", ").join(map(sql.Identifier, cols)),
-            ph=sql.SQL(", ").join(sql.Placeholder() * len(cols)),
-            assign=assignments,
-        )
+    This table is how you answer 'what is actually in the warehouse and when did
+    it get there' three weeks from now, when the Airflow logs have rotated away.
+    """
+    if not fields:
+        return
+    cols = list(fields)
+    assignments = sql.SQL(", ").join(
+        sql.SQL("{} = EXCLUDED.{}").format(sql.Identifier(c), sql.Identifier(c))
+        for c in cols
+    )
+    stmt = sql.SQL(
+        "INSERT INTO raw.ingest_manifest (shard_name, dump_date, {cols}) "
+        "VALUES (%s, %s, {ph}) "
+        "ON CONFLICT (shard_name, dump_date) DO UPDATE SET {assign}"
+    ).format(
+        cols=sql.SQL(", ").join(map(sql.Identifier, cols)),
+        ph=sql.SQL(", ").join(sql.Placeholder() * len(cols)),
+        assign=assignments,
+    )
 
-        with psycopg.connect(dsn, autocommit=True) as conn:
-            conn.execute(stmt, [shard_name, dump_date, *[fields[c] for c in cols]])
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        conn.execute(stmt, [shard_name, dump_date, *[fields[c] for c in cols]])
