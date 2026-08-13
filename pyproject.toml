@@ -11,6 +11,19 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5", "pylint>=3.2"]
 
+# NOT runtime deps. Airflow only ever runs in the container -- importing it on
+# Windows emits a "POSIX-compliant Operating Systems" RuntimeWarning and running
+# it is unsupported. These are here purely so Pylance and pylint can resolve the
+# `airflow.*` imports in airflow-docker/dags/ while editing.
+#
+# Pinned to what apache/airflow:3.3.0 actually ships (see
+# airflow-docker/docker/Dockerfile). If you bump the base image, bump these too,
+# or the editor will type-check against a version the DAGs don't run on.
+airflow = [
+    "apache-airflow==3.3.0",
+    "apache-airflow-providers-postgres==6.8.0",
+]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
