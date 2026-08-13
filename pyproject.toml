@@ -37,3 +37,6 @@ max-locals = 20
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests that need a live warehouse. They skip themselves when the PG_* env vars
+# are absent (CI), so this marker is for opting OUT locally: pytest -m "not integration".
+markers = ["integration: requires a running Postgres warehouse"]
