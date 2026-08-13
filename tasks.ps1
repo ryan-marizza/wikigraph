@@ -45,8 +45,26 @@ function Invoke-Compose {
     finally { Pop-Location }
 }
 
+# Both compose projects declare wikigraph-net as `external: true` -- the warehouse
+# renames its default network to it, and the Airflow override joins it. "External"
+# means neither project will create it, so on a clean machine `up` fails with
+# "network wikigraph-net declared as external, but could not be found".
+#
+# Uses `network ls` rather than `network inspect` on purpose: inspect writes to
+# stderr and returns non-zero when the network is missing, which is noisy under
+# $ErrorActionPreference = 'Stop'. `ls` always succeeds and just returns nothing.
+# The filter is a regex, so it is anchored -- otherwise 'wikigraph-net-old' matches.
+function Initialize-Network {
+    param([string]$Name = 'wikigraph-net')
+    $existing = docker network ls --filter "name=^$Name$" --format '{{.Name}}'
+    if ($existing -notcontains $Name) {
+        Write-Host "Creating docker network '$Name'." -ForegroundColor Cyan
+        docker network create $Name | Out-Null
+    }
+}
+
 switch ($Command) {
-    'db-up'    { Invoke-Compose $WarehouseDir @('up','-d') }
+    'db-up'    { Initialize-Network; Invoke-Compose $WarehouseDir @('up','-d') }
     'db-down'  { Invoke-Compose $WarehouseDir @('down') }
     'db-logs'  { Invoke-Compose $WarehouseDir @('logs','-f','warehouse') }
     'db-nuke'  {
@@ -72,7 +90,7 @@ switch ($Command) {
     }
 
     'airflow-build' { docker build -t $env:AIRFLOW_IMAGE_NAME (Join-Path $AirflowDir 'docker') }
-    'airflow-up'    { Invoke-Compose $AirflowDir @('up','-d') }
+    'airflow-up'    { Initialize-Network; Invoke-Compose $AirflowDir @('up','-d') }
     'airflow-down'  { Invoke-Compose $AirflowDir @('down') }
 
     # Run any airflow CLI command:   .\tasks.ps1 af dags list
