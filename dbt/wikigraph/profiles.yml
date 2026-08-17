@@ -1,0 +1,13 @@
+wikigraph:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('PG_HOST', 'warehouse') }}"
+      port: 5432
+      user: "{{ env_var('PG_DBT_USER') }}"
+      password: "{{ env_var('PG_DBT_PASSWORD') }}"
+      dbname: "{{ env_var('PG_DB', 'wikigraph')}}"
+      schema: stg
+      threads: 4
+      keepalives_idle: 0

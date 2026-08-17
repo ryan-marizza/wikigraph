@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Landing tables owned by the ingest pipeline. dbt reads, never writes."
+    schema: raw
+    tables:
+      - name: page
+        description: "One row per ns=0 MediaWiki page. Partitioned by shard_name."
+        columns:
+          - name: page_id
+            data_tests: [not_null]
+          - name: namespace
+            description: "Should always be 0 — the parser filters at parse time."
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [0]
+          - name: title
+            data_tests: [not_null]
+      - name: ingest_manifest
+        description: "Per-shard ingest bookkeeping."
