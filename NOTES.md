@@ -32,3 +32,9 @@
   Design doc guessed 26.9% (biased head sample) vs 61% (published estimate).
   Measured answer: 46%
 - Extrapolated to 19 shards: 0.44 hours, 55.1 GB Parquet
+
+## Stage stats:
+- ns0_pages = 717_051
+- redirects = 329_547
+- redirect percent = 46.0%
+- dangling redirects = 78_272
