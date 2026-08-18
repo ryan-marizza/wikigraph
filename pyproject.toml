@@ -45,6 +45,14 @@ py-version = "3.11"
 # reports c-extension-no-member on every call.
 extension-pkg-allow-list = ["lxml"]
 
+[tool.pylint.typecheck]
+# CI installs only `.[dev]` -- the `airflow` extra above is an editor/local
+# convenience, not something worth pulling the whole Airflow tree into the lint
+# job for. Without this, `from airflow.sdk import Asset` in assets.py is an
+# import-error on GitHub Actions and clean locally. Cost: pylint also stops
+# checking attribute access on these, which it could not do in CI anyway.
+ignored-modules = ["airflow", "cosmos"]
+
 [tool.pylint.format]
 max-line-length = 100
 
