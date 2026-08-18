@@ -14,14 +14,19 @@ dev = ["pytest>=8", "ruff>=0.5", "pylint>=3.2"]
 # NOT runtime deps. Airflow only ever runs in the container -- importing it on
 # Windows emits a "POSIX-compliant Operating Systems" RuntimeWarning and running
 # it is unsupported. These are here purely so Pylance and pylint can resolve the
-# `airflow.*` imports in airflow-docker/dags/ while editing.
+# `airflow.*` and `cosmos.*` imports in airflow-docker/dags/ while editing.
 #
-# Pinned to what apache/airflow:3.3.0 actually ships (see
-# airflow-docker/docker/Dockerfile). If you bump the base image, bump these too,
-# or the editor will type-check against a version the DAGs don't run on.
+# Pinned to what the container actually resolved to, NOT to what the specs say:
+# the first two ship in apache/airflow:3.3.0, astronomer-cosmos comes from
+# airflow-docker/docker/requirements.txt (spec `>=1.11,<2.0`, resolved 1.15.1).
+# Verify with:
+#   docker exec airflow-docker-airflow-scheduler-1 python -c "import cosmos; print(cosmos.__version__)"
+# If you bump the base image or that requirements pin, bump these too, or the
+# editor will type-check against a version the DAGs don't run on.
 airflow = [
     "apache-airflow==3.3.0",
     "apache-airflow-providers-postgres==6.8.0",
+    "astronomer-cosmos==1.15.1",
 ]
 
 [build-system]
