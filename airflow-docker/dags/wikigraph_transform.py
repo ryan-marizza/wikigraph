@@ -7,6 +7,8 @@ import os
 import pendulum
 from cosmos import DbtDag, ExecutionConfig, ProfileConfig, ProjectConfig
 
+from wikigraph.assets import RAW_PAGE
+
 DBT_PROJECT = "/opt/airflow/dbt/wikigraph"
 
 profile_config = ProfileConfig(
@@ -27,7 +29,7 @@ wikigraph_transform = DbtDag(
     operator_args={
         "install_deps": False,
     },
-    schedule=None,
+    schedule=[RAW_PAGE],
     start_date=pendulum.datetime(2026, 7, 1, tz="UTC"),
     catchup=False,
     max_active_runs=1,

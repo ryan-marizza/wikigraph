@@ -11,6 +11,9 @@ import os
 import pendulum
 from airflow.sdk import Param, dag, task
 
+from wikigraph.assets import RAW_PAGE
+
+
 DEFAULT_ARGS = {
     "retries": 2,
     "retry_delay": pendulum.duration(minutes=5),
@@ -138,7 +141,7 @@ def wikigraph_ingest():
 
         return result
 
-    @task
+    @task(outlets=[RAW_PAGE])
     def summarize(results: list[dict]) -> None:
         total = sum(r["rows_loaded"] for r in results)
         print(f"loaded {total:,} rows across {len(results)} shard(s)")
