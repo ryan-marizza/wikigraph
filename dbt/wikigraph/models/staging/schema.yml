@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_page
+    description: "Typed, normalized ns=0 pages including redirects."
+    columns:
+      - name: page_id
+        description: "MediaWiki page ID. Globally unique across all shards."
+        data_tests: [unique, not_null]
+      
+      - name: norm_title
+        description: >
+          Canonical title. The join key for every link resolution. 
+          The unique test here is load bearing: a collision means norm_title()
+          is wrong and every downstream join would silently multiply rows.
+        data_tests: [unique, not_null]
+
+      - name: is_redirect
+        data_tests: [not_null]
+
+      - name: redirect_to_norm
+        description: "Normalized redirect target, anchor stripped. NULL for articles."
+
+      - name: dump_date
+        data_tests: [not_null]
+      

@@ -21,10 +21,11 @@ __pycache__/
 
 .env
 raw_data/
-staging/
 *.pyc
 .pytest_cache/
 dbt/**/target/
 dbt/**/dbt_packages/
 dbt/**/logs/
 NOTES.md.bak
+
+*.parquet

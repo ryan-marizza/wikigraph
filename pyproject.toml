@@ -11,6 +11,24 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5", "pylint>=3.2"]
 
+# NOT runtime deps. Airflow only ever runs in the container -- importing it on
+# Windows emits a "POSIX-compliant Operating Systems" RuntimeWarning and running
+# it is unsupported. These are here purely so Pylance and pylint can resolve the
+# `airflow.*` and `cosmos.*` imports in airflow-docker/dags/ while editing.
+#
+# Pinned to what the container actually resolved to, NOT to what the specs say:
+# the first two ship in apache/airflow:3.3.0, astronomer-cosmos comes from
+# airflow-docker/docker/requirements.txt (spec `>=1.11,<2.0`, resolved 1.15.1).
+# Verify with:
+#   docker exec airflow-docker-airflow-scheduler-1 python -c "import cosmos; print(cosmos.__version__)"
+# If you bump the base image or that requirements pin, bump these too, or the
+# editor will type-check against a version the DAGs don't run on.
+airflow = [
+    "apache-airflow==3.3.0",
+    "apache-airflow-providers-postgres==6.8.0",
+    "astronomer-cosmos==1.15.1",
+]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -27,6 +45,14 @@ py-version = "3.11"
 # reports c-extension-no-member on every call.
 extension-pkg-allow-list = ["lxml"]
 
+[tool.pylint.typecheck]
+# CI installs only `.[dev]` -- the `airflow` extra above is an editor/local
+# convenience, not something worth pulling the whole Airflow tree into the lint
+# job for. Without this, `from airflow.sdk import Asset` in assets.py is an
+# import-error on GitHub Actions and clean locally. Cost: pylint also stops
+# checking attribute access on these, which it could not do in CI anyway.
+ignored-modules = ["airflow", "cosmos"]
+
 [tool.pylint.format]
 max-line-length = 100
 
@@ -37,3 +63,6 @@ max-locals = 20
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests that need a live warehouse. They skip themselves when the PG_* env vars
+# are absent (CI), so this marker is for opting OUT locally: pytest -m "not integration".
+markers = ["integration: requires a running Postgres warehouse"]

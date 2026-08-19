@@ -1,0 +1,18 @@
+name: 'wikigraph'
+version: '0.1.0'
+config-version: 2
+profile: 'wikigraph'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  wikigraph:
+    staging:
+      +schema: stg
+      +materialized: table
+    marts:
+      +schema: mart
+      +materialized: table

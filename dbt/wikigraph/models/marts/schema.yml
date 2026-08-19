@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: dim_article
+    description: "One row per canonical (non-redirect) ns=0 article."
+    columns:
+      - name: article_id
+        data_tests: [unique, not_null]
+      - name: norm_title
+        data_tests: [unique, not_null]
+      - name: title
+        data_tests: [not_null]
