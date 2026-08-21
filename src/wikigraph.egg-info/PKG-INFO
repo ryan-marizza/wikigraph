@@ -5,6 +5,17 @@ Requires-Python: >=3.11
 Requires-Dist: lxml>=5.2
 Requires-Dist: pyarrow>=16
 Requires-Dist: psycopg[binary]>=3.2
+Requires-Dist: numpy>=2.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8; extra == "dev"
 Requires-Dist: ruff>=0.5; extra == "dev"
+Requires-Dist: pylint>=3.2; extra == "dev"
+Requires-Dist: mwparserfromhell>=0.7; extra == "dev"
+Provides-Extra: viz
+Requires-Dist: networkx>=3.3; extra == "viz"
+Requires-Dist: matplotlib>=3.9; extra == "viz"
+Requires-Dist: pyvis>=0.3.2; extra == "viz"
+Provides-Extra: airflow
+Requires-Dist: apache-airflow==3.3.0; extra == "airflow"
+Requires-Dist: apache-airflow-providers-postgres==6.8.0; extra == "airflow"
+Requires-Dist: astronomer-cosmos==1.15.1; extra == "airflow"

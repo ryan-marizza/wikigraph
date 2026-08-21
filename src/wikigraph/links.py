@@ -248,10 +248,11 @@ def extract_links(wikitext: str | None) -> list[dict]:
             if h and not tmpl_stack and table == 0:
                 section = h.group(2).strip() or None
 
-        return links
+    return links
 
-    def extract_page_links(page_id: int, wikitext: str | None) -> list[dict]:
-        rows = extract_links(wikitext)
-        for r in rows:
-            r["src_page_id"] = page_id
-        return rows
+
+def extract_page_links(page_id: int, wikitext: str | None) -> list[dict]:
+    rows = extract_links(wikitext)
+    for r in rows:
+        r["src_page_id"] = page_id
+    return rows

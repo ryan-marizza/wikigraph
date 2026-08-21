@@ -6,10 +6,12 @@ dependencies = [
     "lxml>=5.2",
     "pyarrow>=16",
     "psycopg[binary]>=3.2",
+    "numpy>=2.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "pylint>=3.2"]
+dev = ["pytest>=8", "ruff>=0.5", "pylint>=3.2", "mwparserfromhell>=0.7"]
+viz = ["networkx>=3.3", "matplotlib>=3.9", "pyvis>=0.3.2"]
 
 # NOT runtime deps. Airflow only ever runs in the container -- importing it on
 # Windows emits a "POSIX-compliant Operating Systems" RuntimeWarning and running
